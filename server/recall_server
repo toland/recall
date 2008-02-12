@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+
+ROOT_DIR = "#{File.dirname(__FILE__)}/.."
+
+exec 'erl', "-mnesia dir '#{ROOT_DIR}/db", "-pa #{ROOT_DIR}/server", "recall"
