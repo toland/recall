@@ -1,5 +1,3 @@
-#!/usr/bin/env ruby
+#!/bin/sh
 
-ROOT_DIR = "#{File.dirname(__FILE__)}/.."
-
-exec 'erl', "-mnesia dir '#{ROOT_DIR}/db", "-pa #{ROOT_DIR}/server", "recall"
+exec erl -s recall start -mnesia dir "db" -pa "." recall

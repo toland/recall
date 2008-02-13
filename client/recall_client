@@ -1,8 +1,5 @@
 #!/usr/bin/env ruby
 
-ROOT_DIR = "#{File.dirname(__FILE__)}/.."
-$LOAD_PATH << "#{ROOT_DIR}/client"
-
 require 'recall'
 require 'irb'
 
