@@ -103,3 +103,7 @@ do_command(Socket, {"ECHO", Args}) ->
 do_command(Socket, {Cmd, _Args}) ->
     io:fwrite("--> Calling default handler for command ~s...~n", [Cmd]),
     socket_send(Socket, "ok").
+
+start_mnesia() ->
+    mnesia:create_schema([node()]),
+    mnesia:start().
