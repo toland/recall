@@ -1,6 +1,7 @@
 -module(recall).
 -export([start/0]).
 -export([start_listener/1, accept_clients/2, register_client/2, loop/1, client_loop/2]).
+-import(rfc4627, [encode/1, decode/1]).
 -compile(export_all).
 
 
@@ -68,21 +69,21 @@ accept_clients(Socket, Server) ->
 register_client(Socket, Server) ->
     socket_send(Socket, "Welcome to Recall. Connect with 'CONNECT name'."),
     {ok, N} = gen_tcp:recv(Socket, 0),
-    case string:tokens(N, " \r\n") of
-        ["CONNECT", Name] ->
-            Client = #client{socket=Socket, name=Name, pid=self()},
+    case parse_command(N) of
+        {connect, Name} ->
+            Client = #client{socket=Socket, name=binary_to_list(Name), pid=self()},
             Server ! {'new client', Client},
-            socket_send(Socket, "ok"),
+            send_success(Socket, "Connected"),
             client_loop(Client, Server);
     
         _ ->
-            gen_tcp:send(Socket, "That wasn't sensible, sorry."),
+            send_error(Socket, "That wasn't sensible, sorry."),
             gen_tcp:close(Socket)
     end.
 
 client_loop(Client = #client{socket = Socket}, Server) ->
     case gen_tcp:recv(Socket, 0) of
-        {ok, Recv} -> do_command(Socket, split_command(Recv));
+        {ok, Recv} -> do_command(Socket, parse_command(Recv));
         {error, _} -> Server ! {'lost client', Client}
     end,
     receive
@@ -93,16 +94,52 @@ client_loop(Client = #client{socket = Socket}, Server) ->
 
 socket_send(Socket, Msg) -> gen_tcp:send(Socket, Msg ++ "\r\n").
 
-split_command(CmdStr) ->
-    Cmd = string:sub_word(CmdStr, 1),
-    {Cmd, string:strip(CmdStr -- Cmd)}.
 
-do_command(Socket, {"ECHO", Args}) ->
-    socket_send(Socket, Args),
-    socket_send(Socket, "ok");
-do_command(Socket, {Cmd, _Args}) ->
-    io:fwrite("--> Calling default handler for command ~s...~n", [Cmd]),
-    socket_send(Socket, "ok").
+send_success(Socket) -> socket_send(Socket, encode([<<"ok">>])).
+
+send_success(Socket, Msg) when is_atom(Msg) ->
+    socket_send(Socket, encode([<<"ok">>, Msg]));
+send_success(Socket, Msg) when is_list(Msg) ->
+    socket_send(Socket, encode([<<"ok">>, list_to_binary(Msg)])).
+
+send_error(Socket, Reason) ->
+    socket_send(Socket, encode([<<"error">>, list_to_binary(Reason)])).
+
+send_mnesia_result(Socket, Result) ->
+    case Result of 
+        {atomic, ok} -> send_success(Socket);
+        {atomic, Val} -> send_success(Socket, Val);
+        {aborted, Reason} -> 
+            io:fwrite("~p~n", Reason),
+            send_error(Socket, mnesia:error_description(Reason))
+    end.
+
+parse_command(CmdStr) ->
+    case decode(CmdStr) of
+        {ok, [Cmd|Args], _Rest} -> 
+            list_to_tuple(lists:append([list_to_atom(string:to_lower(binary_to_list(Cmd)))], Args));
+        {error, Reason} -> {error, CmdStr, Reason}
+    end.
+
+binary_to_atom(Binary) -> list_to_atom(binary_to_list(Binary)).
+binary_list_to_atom_list(List) -> [binary_to_atom(Item) || Item <- List].
+binary_list_to_string_list(List) -> [binary_to_list(Item) || Item <- List].
+
+do_command(Socket, {echo, Arg}) ->
+    send_success(Socket, binary_to_list(Arg));
+do_command(Socket, {mktable, Name, Fields}) ->
+    Result = mnesia:create_table(binary_to_atom(Name), 
+                [{disc_copies,  [node()]}, 
+                 {attributes,  binary_list_to_atom_list(Fields)}]),
+    send_mnesia_result(Socket, Result);
+do_command(Socket, {rmtable, Name}) ->
+    send_mnesia_result(Socket, mnesia:delete_table(binary_to_atom(Name)));
+do_command(Socket, {error, CmdStr, Reason}) ->
+    io:fwrite("--> Error parsing command ~s...~n", [CmdStr]),
+    send_error(Socket, Reason);
+do_command(Socket, CmdList) ->
+    io:fwrite("--> Calling default handler for command ~p...~n", CmdList),
+    send_error(Socket, "Unkown command").
 
 start_mnesia() ->
     mnesia:create_schema([node()]),

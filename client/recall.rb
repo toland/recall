@@ -1,3 +1,11 @@
+require 'rubygems'
+gem 'json'
+
+require 'json' 
+require 'json/add/core'
+require 'json/add/rails'
+
+
 module Recall
   
   class Client
@@ -9,28 +17,48 @@ module Recall
     def connect(who)
       greeting = read
       puts greeting
-      response = send_command "CONNECT #{who}"
+      response = send_command "CONNECT", who
       puts response
     end
 
+    def reconnect(who)
+      disconnect
+      connect(who)
+    end
+
     def disconnect
-      @socket.close
+      if !@socket.nil? && !@socket.closed?
+        @socket.close
+      end
+      @socket = nil
     end
 
-    def echo(what)
-      send_command "ECHO #{what}"
+    def self.mkcommand(name, token, *args)
+      define_method(name.to_s) do |*args|
+        send_command token, *args
+      end
     end
 
-    def send_command(command)
-  		write command
-  		read
+    mkcommand :echo,          "ECHO",     :what
+    mkcommand :create_table,  "MKTABLE",  :name, :fields
+    mkcommand :drop_table,    "RMTABLE",  :name
+
+    def send_command(command, *args)
+      cmd = [command, *args].to_json 
+      puts cmd
+      write cmd
+      JSON.parse read
+    end
+
+    def socket
+      if @socket.nil? || @socket.closed?
+        @socket = TCPSocket.new(@host, @port)
+      end
+
+      @socket
     end
 
   protected
-
-    def socket
-      @socket ||= TCPSocket.new(@host, @port)
-    end
 
     def read
       socket.readline
