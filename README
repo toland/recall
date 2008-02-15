@@ -1,0 +1,52 @@
+Recall is a client for the Mnesia database system. It allows clients written
+in languages other than Erlang to connect to and interact with Mnesia. 
+
+== Protocol
+
+The protocol Recall uses is very simple. It is based on JSON to make parsing
+easy. Clients send commands to the Recall server encoded as a JSON array with
+the first element in the array being the command to execute. The remaining 
+elements in the array are the parameters to the command. The commands are
+implemented in Erlang on the server and there is not currently a method for
+executing Erlang code directly. 
+
+A Recall command looks like this in JSON:
+
+  ["COMMAND", "param1", "param2", "param3"]
+
+Currently, the params can be strings, numbers or arrays. Support for objects
+is planned but not currently implemented. 
+
+
+== Command Reference
+
+  ["CONNECT", "me@myhost"]
+
+Establishes a connection to Recall. The second parameter is not used for
+authentication purposes. It is mainly used to identify the client in a
+troubleshooting situation. 
+
+  ["ECHO", "text to echo"]
+
+Sends the text in the parameter back to the client. It is primarily useful to
+verify that the connection is working.
+
+  ["MKTABLE", "table_name", ["field1", "field2", ...]]
+
+Creates a new table in Mnesia. The first parameter is the name of the table
+and the second is an array containing the field names. By convention the first
+field is the key.
+
+  ["RMTABLE", "table_name"]
+
+Deletes the named table from Mnesia.
+
+  ["INSERT", "table_name", ["value1", "value2" ...]]
+
+Inserts a new record into the named table. Values must be supplied for all
+fields in the table. Also, the field values must be in the same order as the
+field names were in when the table was created.
+
+  ["DELETE", "table_name", "key"]
+
+Delete the record from the named table that is identified by the given key.
