@@ -68,7 +68,7 @@
 %% can use unicode_encode/1 to UTF-encode the results, if that's
 %% appropriate for your application.
 
--module(rfc4627).
+-module(json).
 
 -export([mime_type/0, encode/1, decode/1]).
 -export([encode_noauto/1, encode_noauto/2, decode_noauto/1]).

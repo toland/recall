@@ -1,7 +1,6 @@
 -module(recall).
 -export([start/0]).
 -export([start_listener/1, accept_clients/2, register_client/2, loop/1, client_loop/2]).
--import(rfc4627, [encode/1, decode/1]).
 -compile(export_all).
 
 
@@ -95,15 +94,15 @@ client_loop(Client = #client{socket = Socket}, Server) ->
 socket_send(Socket, Msg) -> gen_tcp:send(Socket, Msg ++ "\r\n").
 
 
-send_success(Socket) -> socket_send(Socket, encode([<<"ok">>])).
+send_success(Socket) -> socket_send(Socket, json:encode([<<"ok">>])).
 
 send_success(Socket, Msg) when is_atom(Msg) ->
-    socket_send(Socket, encode([<<"ok">>, Msg]));
+    socket_send(Socket, json:encode([<<"ok">>, Msg]));
 send_success(Socket, Msg) when is_list(Msg) ->
-    socket_send(Socket, encode([<<"ok">>, list_to_binary(Msg)])).
+    socket_send(Socket, json:encode([<<"ok">>, list_to_binary(Msg)])).
 
 send_error(Socket, Reason) ->
-    socket_send(Socket, encode([<<"error">>, list_to_binary(Reason)])).
+    socket_send(Socket, json:encode([<<"error">>, list_to_binary(Reason)])).
 
 send_mnesia_result(Socket, Result) ->
     case Result of 
@@ -122,7 +121,7 @@ list_to_record(Id, List) ->
     list_to_tuple(lists:append([list_to_atom(string:to_lower(binary_to_list(Id)))], List)).
 
 parse_command(CmdStr) ->
-    case decode(CmdStr) of
+    case json:decode(CmdStr) of
         {ok, [Cmd|Args], _Rest} -> list_to_record(Cmd, Args);
         {error, Reason} -> {error, CmdStr, Reason}
     end.

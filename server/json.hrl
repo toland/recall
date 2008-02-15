@@ -29,8 +29,8 @@
 %% Erlang's compile-time-only notion of record definitions means we
 %% have to supply a constant record name in the source text.
 
--define(RFC4627_FROM_RECORD(RName, R),
-	rfc4627:from_record(R, RName, record_info(fields, RName))).
+-define(JSON_FROM_RECORD(RName, R),
+	json:from_record(R, RName, record_info(fields, RName))).
 
--define(RFC4627_TO_RECORD(RName, R),
-	rfc4627:to_record(R, #RName{}, record_info(fields, RName))).
+-define(JSON_TO_RECORD(RName, R),
+	json:to_record(R, #RName{}, record_info(fields, RName))).
