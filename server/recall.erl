@@ -114,10 +114,16 @@ send_mnesia_result(Socket, Result) ->
             send_error(Socket, mnesia:error_description(Reason))
     end.
 
+list_to_record(List) ->
+    [H|T] = List,
+    list_to_record(H, T).
+
+list_to_record(Id, List) ->
+    list_to_tuple(lists:append([list_to_atom(string:to_lower(binary_to_list(Id)))], List)).
+
 parse_command(CmdStr) ->
     case decode(CmdStr) of
-        {ok, [Cmd|Args], _Rest} -> 
-            list_to_tuple(lists:append([list_to_atom(string:to_lower(binary_to_list(Cmd)))], Args));
+        {ok, [Cmd|Args], _Rest} -> list_to_record(Cmd, Args);
         {error, Reason} -> {error, CmdStr, Reason}
     end.
 
