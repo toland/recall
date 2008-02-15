@@ -1,25 +1,47 @@
+%%---------------------------------------------------------------------------
+%% This is the main driver for the Recall Mnesia client.
+
 -module(recall).
--export([start/0]).
--export([start_listener/1, accept_clients/2, register_client/2, loop/1, client_loop/2]).
--compile(export_all).
+-export([boot/0, start/0, start_mnesia_standalone/0]).
+-export([start_listener/1,
+         accept_clients/2,
+         register_client/2,
+         loop/1,
+         client_loop/2]).
+-include("recall.hrl").
+-import(recall_cmds, [do_command/2]).
+-import(recall_utils, [parse_command/1,
+                       socket_send/2,
+                       send_success/2,
+                       send_error/2]).
 
 
--define(DEFAULT_PORT, 9900).
+% Start a standalone Mnesia node and then start Recall.
+boot() ->
+    start_mnesia_standalone(),
+    start().
 
--record(session, {socket, accepter, clients}).
--record(client, {socket, name, pid}).
+
+% Start Mnesia on this node only.
+start_mnesia_standalone() ->
+    mnesia:create_schema([node()]),
+    mnesia:start().
 
 
-start() -> 
-    spawn(?MODULE, start_listener, [?DEFAULT_PORT]).
+% Start the Recall client listener in a new process.
+start() -> spawn(?MODULE, start_listener, [?DEFAULT_PORT]).
 
+
+% Open the socket used to listen for connections and start the main loop
+% in a new process.
 start_listener(Port) ->
     {ok, Socket} = gen_tcp:listen(Port, [{packet, 0}, {active, false}]),
     Accepter = spawn_link(?MODULE, accept_clients, [Socket, self()]),
-	io:fwrite("--> Recall Server Started on port ~B...~n", [Port]),
+    io:fwrite("--> Recall Server Started on port ~B...~n", [Port]),
     loop(#session{socket = Socket, accepter = Accepter, clients = []}).
 
 
+% The main loop which maintains the client list and a few bookkeeping tasks.
 loop(Session = #session{accepter = A, clients = Cs}) ->
     receive
         {'new client', Client} ->
@@ -54,6 +76,7 @@ loop(Session = #session{accepter = A, clients = Cs}) ->
     end.
 
 
+% Listens for new client connections.
 accept_clients(Socket, Server) ->
     case gen_tcp:accept(Socket) of
         {ok, Client} -> spawn(?MODULE, register_client, [Client, Server]);
@@ -65,6 +88,10 @@ accept_clients(Socket, Server) ->
     after 0 -> accept_clients(Socket, Server)
     end.
 
+
+% Called when a new client connects. Handles identifying the client and passes
+% the Client record back to the main loop. Once the client has been identified
+% the client_loop is started.
 register_client(Socket, Server) ->
     socket_send(Socket, "Welcome to Recall. Connect with 'CONNECT name'."),
     {ok, N} = gen_tcp:recv(Socket, 0),
@@ -74,12 +101,14 @@ register_client(Socket, Server) ->
             Server ! {'new client', Client},
             send_success(Socket, "Connected"),
             client_loop(Client, Server);
-    
+
         _ ->
             send_error(Socket, "That wasn't sensible, sorry."),
             gen_tcp:close(Socket)
     end.
 
+
+% Receives, parses and dispatches commands sent by the client.
 client_loop(Client = #client{socket = Socket}, Server) ->
     case gen_tcp:recv(Socket, 0) of
         {ok, Recv} -> do_command(Socket, parse_command(Recv));
@@ -90,62 +119,3 @@ client_loop(Client = #client{socket = Socket}, Server) ->
         quit -> gen_tcp:close(Socket)
     after 0 -> client_loop(Client, Server)
     end.
-
-socket_send(Socket, Msg) -> gen_tcp:send(Socket, Msg ++ "\r\n").
-
-
-send_success(Socket) -> socket_send(Socket, json:encode([<<"ok">>])).
-
-send_success(Socket, Msg) when is_atom(Msg) ->
-    socket_send(Socket, json:encode([<<"ok">>, Msg]));
-send_success(Socket, Msg) when is_list(Msg) ->
-    socket_send(Socket, json:encode([<<"ok">>, list_to_binary(Msg)])).
-
-send_error(Socket, Reason) ->
-    socket_send(Socket, json:encode([<<"error">>, list_to_binary(Reason)])).
-
-send_mnesia_result(Socket, Result) ->
-    case Result of 
-        {atomic, ok} -> send_success(Socket);
-        {atomic, Val} -> send_success(Socket, Val);
-        {aborted, Reason} -> 
-            io:fwrite("~p~n", Reason),
-            send_error(Socket, mnesia:error_description(Reason))
-    end.
-
-list_to_record(List) ->
-    [H|T] = List,
-    list_to_record(H, T).
-
-list_to_record(Id, List) ->
-    list_to_tuple(lists:append([list_to_atom(string:to_lower(binary_to_list(Id)))], List)).
-
-parse_command(CmdStr) ->
-    case json:decode(CmdStr) of
-        {ok, [Cmd|Args], _Rest} -> list_to_record(Cmd, Args);
-        {error, Reason} -> {error, CmdStr, Reason}
-    end.
-
-binary_to_atom(Binary) -> list_to_atom(binary_to_list(Binary)).
-binary_list_to_atom_list(List) -> [binary_to_atom(Item) || Item <- List].
-binary_list_to_string_list(List) -> [binary_to_list(Item) || Item <- List].
-
-do_command(Socket, {echo, Arg}) ->
-    send_success(Socket, binary_to_list(Arg));
-do_command(Socket, {mktable, Name, Fields}) ->
-    Result = mnesia:create_table(binary_to_atom(Name), 
-                [{disc_copies,  [node()]}, 
-                 {attributes,  binary_list_to_atom_list(Fields)}]),
-    send_mnesia_result(Socket, Result);
-do_command(Socket, {rmtable, Name}) ->
-    send_mnesia_result(Socket, mnesia:delete_table(binary_to_atom(Name)));
-do_command(Socket, {error, CmdStr, Reason}) ->
-    io:fwrite("--> Error parsing command ~s...~n", [CmdStr]),
-    send_error(Socket, Reason);
-do_command(Socket, CmdList) ->
-    io:fwrite("--> Calling default handler for command ~p...~n", CmdList),
-    send_error(Socket, "Unkown command").
-
-start_mnesia() ->
-    mnesia:create_schema([node()]),
-    mnesia:start().
