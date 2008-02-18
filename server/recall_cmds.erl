@@ -8,11 +8,13 @@
 -import(recall_utils, [send_success/1,
                        send_success/2,
                        send_error/2,
+                       list_to_record/1,
                        binary_to_atom/1,
                        binary_list_to_atom_list/1]).
 
 
-% Parse the result returned from an Mnesia function and send the result to the client.
+% Parse the result returned from an Mnesia function and send the result to the
+% client.
 send_mnesia_result(Socket, Result) ->
     case Result of
         {atomic, ok} -> send_success(Socket);
@@ -27,7 +29,8 @@ send_mnesia_result(Socket, Result) ->
 do_command(Socket, {echo, Arg}) ->
     send_success(Socket, binary_to_list(Arg));
 
-% Create a new table in Mnesia named 'Name' with the fields names listed in 'Fields'.
+% Create a new table in Mnesia named 'Name' with the fields names listed in
+% 'Fields'.
 do_command(Socket, {mktable, Name, Fields}) ->
     Result = mnesia:create_table(binary_to_atom(Name), 
                 [{disc_copies,  [node()]},
@@ -37,6 +40,19 @@ do_command(Socket, {mktable, Name, Fields}) ->
 % Delete the Mnesia table named 'Name'.
 do_command(Socket, {rmtable, Name}) ->
     send_mnesia_result(Socket, mnesia:delete_table(binary_to_atom(Name)));
+
+% Insert a new record in the table.
+do_command(Socket, {insert, Record}) ->
+    F = fun() -> mnesia:write(list_to_record(Record)) end,
+    Result = mnesia:transaction(F),
+    send_mnesia_result(Socket, Result);
+
+% Delete the record from the table named 'Table' that is identified by the key
+% 'Key'.
+do_command(Socket, {delete, Table, Key}) ->
+    F = fun() -> mnesia:delete({binary_to_atom(Table), Key}) end,
+    Result = mnesia:transaction(F),
+    send_mnesia_result(Socket, Result);
 
 % This clause is called when there is an error parsing the command.
 do_command(Socket, {error, CmdStr, Reason}) ->
