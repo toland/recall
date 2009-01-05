@@ -44,6 +44,7 @@ module Recall
     mkcommand :drop_table,    "RMTABLE",  :name
     mkcommand :insert,        "INSERT",   :record
     mkcommand :delete,        "DELETE",   :table, :key
+    mkcommand :find,          "FIND",     :table, :key
 
     def send_command(command, *args)
       cmd = [command, *args].to_json 

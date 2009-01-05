@@ -18,6 +18,7 @@
 send_mnesia_result(Socket, Result) ->
     case Result of
         {atomic, ok} -> send_success(Socket);
+        {atomic, [Record]} -> send_success(Socket, tuple_to_list(Record));
         {atomic, Val} -> send_success(Socket, Val);
         {aborted, Reason} ->
             io:fwrite("~p~n", Reason),
@@ -51,6 +52,11 @@ do_command(Socket, {insert, Record}) ->
 % 'Key'.
 do_command(Socket, {delete, Table, Key}) ->
     F = fun() -> mnesia:delete({binary_to_atom(Table), Key}) end,
+    Result = mnesia:transaction(F),
+    send_mnesia_result(Socket, Result);
+
+do_command(Socket, {find, Table, Key}) ->
+    F = fun() -> mnesia:read({binary_to_atom(Table), Key}) end,
     Result = mnesia:transaction(F),
     send_mnesia_result(Socket, Result);
 
